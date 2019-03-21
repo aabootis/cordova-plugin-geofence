@@ -53,10 +53,10 @@ func log(_ messages: [String]) {
 
         if iOS8 {
             promptForNotificationPermission()
+            geoNotificationManager.registerPermissions()
         }
-
-        geoNotificationManager.registerPermissions()
         geoNotificationManager.isActive = true
+        geoNotificationManager.startUpdatingLocation()
 
         let (ok, warnings, errors) = geoNotificationManager.checkRequirements()
 
@@ -278,14 +278,16 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
     }
 
     func registerPermissions() {
-        if iOS8 {
-            locationManager.requestAlwaysAuthorization()
-        }
+        locationManager.requestAlwaysAuthorization()
+    }
+
+    func startUpdatingLocation() {
         locationManager.startUpdatingLocation()
         locationManager.startMonitoringSignificantLocationChanges()
     }
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {
+        var geoNotification = geoNotification
         log("GeoNotificationManager addOrUpdate")
 
         let (_, warnings, errors) = checkRequirements()
@@ -310,6 +312,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
         region.notifyOnEntry = 0 != transitionType & 1
         region.notifyOnExit = 0 != transitionType & 2
 
+        geoNotification["isInside"] = false
         //store
         store.addOrUpdate(geoNotification)
         locationManager.startMonitoring(for: region)
@@ -329,8 +332,12 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
 
         let authStatus = CLLocationManager.authorizationStatus()
 
-        if (authStatus != CLAuthorizationStatus.authorizedAlways) {
-            errors.append("Warning: Location always permissions not granted")
+        if authStatus != .authorizedAlways {
+            if authStatus != .authorizedWhenInUse {
+                errors.append("Error: Location when in use permissions not granted")
+            } else {
+                warnings.append("Warning: Location always permissions not granted")
+            }
         }
 
         if iOS8 {
@@ -515,17 +522,22 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
                 let coord = CLLocation(latitude: json["latitude"].doubleValue, longitude: json["longitude"].doubleValue)
 
                 if location.distance(from: coord) <= radius {
-                    if json["transitionType"].intValue == 1 && !json["isInside"].boolValue {
-                        handleTransition(json["id"].stringValue, transitionType: 1)
+                    if !json["isInside"].boolValue {
+                        if json["transitionType"].intValue == 1 {
+                            handleTransition(json["id"].stringValue, transitionType: 1)
+                        }
+                        json["isInside"] = true
+                        store.addOrUpdate(json)
                     }
-                    json["isInside"] = true
                 } else {
-                    if json["transitionType"].intValue == 2 && json["isInside"].boolValue {
-                        handleTransition(json["id"].stringValue, transitionType: 2)
+                    if json["isInside"].boolValue {
+                        if json["transitionType"].intValue == 2 {
+                            handleTransition(json["id"].stringValue, transitionType: 2)
+                        }
+                        json["isInside"] = false
+                        store.addOrUpdate(json)
                     }
-                    json["isInside"] = false
                 }
-                addOrUpdateGeoNotification(json)
             }
         }
     }
@@ -576,7 +588,6 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
     func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         log("Monitoring region " + region!.identifier + " failed \(error)" )
     }
-
 
     @available(iOS 10.0, *)
     func userNotificationCenter(_ center: UNUserNotificationCenter,
