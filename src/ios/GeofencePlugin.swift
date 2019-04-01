@@ -44,6 +44,7 @@ func log(_ messages: [String]) {
             object: nil
         )
         geoNotificationManager = GeoNotificationManager()
+        self.geoNotificationManager.monitorClosestRegions()
     }
 
     @objc func initialize(_ command: CDVInvokedUrlCommand) {
@@ -238,7 +239,7 @@ class GeofenceFaker {
                             if let region = self.geoNotificationManager.getMonitoredRegion(id) {
                                 log("FAKER Trigger didEnterRegion")
                                 self.geoNotificationManager.locationManager(
-                                    self.geoNotificationManager.locationManager,
+                                    self.geoNotificationManager.regionLocationManager,
                                     didEnterRegion: region
                                 )
                             }
@@ -258,6 +259,7 @@ class GeofenceFaker {
 @available(iOS 8.0, *)
 class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotificationCenterDelegate {
     let locationManager = CLLocationManager()
+    let regionLocationManager = CLLocationManager()
     let store = GeoNotificationStore()
     var snoozedFences = [String : Double]()
     var isActive = false
@@ -267,9 +269,11 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        regionLocationManager.delegate = self
 
         if iOS8 {
             locationManager.requestAlwaysAuthorization()
+            regionLocationManager.requestAlwaysAuthorization()
         }
 
         if #available(iOS 10.0, *) {
@@ -279,11 +283,13 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
 
     func registerPermissions() {
         locationManager.requestAlwaysAuthorization()
+        regionLocationManager.requestAlwaysAuthorization()
     }
 
     func startUpdatingLocation() {
         locationManager.startUpdatingLocation()
-        locationManager.startMonitoringSignificantLocationChanges()
+        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.pausesLocationUpdatesAutomatically = false
     }
 
     func addOrUpdateGeoNotification(_ geoNotification: JSON) {
@@ -295,11 +301,19 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
         log(warnings)
         log(errors)
 
+        log("AddOrUpdate geo: \(geoNotification)")
+
+        geoNotification["isInside"] = false
+        //store
+        store.addOrUpdate(geoNotification)
+        monitorRegion(geoNotification)
+    }
+
+    func monitorRegion(_ geoNotification: JSON) {
         let location = CLLocationCoordinate2DMake(
             geoNotification["latitude"].doubleValue,
             geoNotification["longitude"].doubleValue
         )
-        log("AddOrUpdate geo: \(geoNotification)")
         let radius = geoNotification["radius"].doubleValue as CLLocationDistance
         let id = geoNotification["id"].stringValue
 
@@ -312,10 +326,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
         region.notifyOnEntry = 0 != transitionType & 1
         region.notifyOnExit = 0 != transitionType & 2
 
-        geoNotification["isInside"] = false
-        //store
-        store.addOrUpdate(geoNotification)
-        locationManager.startMonitoring(for: region)
+        regionLocationManager.startMonitoring(for: region)
     }
 
     func checkRequirements() -> (Bool, [String], [String]) {
@@ -372,7 +383,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
     }
 
     func getMonitoredRegion(_ id: String) -> CLRegion? {
-        for object in locationManager.monitoredRegions {
+        for object in regionLocationManager.monitoredRegions {
             let region = object
 
             if (region.identifier == id) {
@@ -387,7 +398,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
         let region = getMonitoredRegion(id)
         if (region != nil) {
             log("Stoping monitoring region \(id)")
-            locationManager.stopMonitoring(for: region!)
+            regionLocationManager.stopMonitoring(for: region!)
         }
         //resetting snoozed fence
         snoozeFence(id, duration: 0)
@@ -395,10 +406,10 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
 
     func removeAllGeoNotifications() {
         store.clear()
-        for object in locationManager.monitoredRegions {
+        for object in regionLocationManager.monitoredRegions {
             let region = object
             log("Stoping monitoring region \(region.identifier)")
-            locationManager.stopMonitoring(for: region)
+            regionLocationManager.stopMonitoring(for: region)
         }
     }
 
@@ -538,6 +549,27 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
                         store.addOrUpdate(json)
                     }
                 }
+            }
+        }
+    }
+
+    func monitorClosestRegions() {
+        if let allStored = store.getAll(), let location = locationManager.location {
+            for object in locationManager.monitoredRegions {
+                locationManager.stopMonitoring(for: object)
+            }
+
+            let sorted = allStored.sorted(by: {
+                location.distance( from: CLLocation( latitude: $0["latitude"].doubleValue,
+                                                     longitude: $0["longitude"].doubleValue))
+                    <
+                    location.distance(from: CLLocation(  latitude: $1["latitude"].doubleValue,
+                                                         longitude: $1["longitude"].doubleValue))
+            })
+
+            for json in sorted.prefix(20) {
+                log("sorted: \(json["notification"]["title"].stringValue)")
+                monitorRegion(json)
             }
         }
     }
