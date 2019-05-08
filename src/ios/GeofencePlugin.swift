@@ -411,6 +411,11 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
             log("Stoping monitoring region \(region.identifier)")
             regionLocationManager.stopMonitoring(for: region)
         }
+
+        snoozedFences.removeAll()
+        if #available(iOS 10.0, *) {
+            UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        }
     }
 
     func handleTransition(_ id: String, transitionType: Int) {
