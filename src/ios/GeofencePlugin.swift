@@ -195,9 +195,7 @@ func log(_ messages: [String]) {
 
     func evaluateJs (_ script: String) {
         if let webView = webView {
-            if let uiWebView = webView as? UIWebView {
-                uiWebView.stringByEvaluatingJavaScript(from: script)
-            } else if let wkWebView = webView as? WKWebView {
+            if let wkWebView = webView as? WKWebView {
                 wkWebView.evaluateJavaScript(script, completionHandler: nil)
             }
         } else {
@@ -276,9 +274,9 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
             regionLocationManager.requestAlwaysAuthorization()
         }
 
-        if #available(iOS 10.0, *) {
-            UNUserNotificationCenter.current().delegate = self
-        }
+        // if #available(iOS 10.0, *) {
+        //     UNUserNotificationCenter.current().delegate = self
+        // }
     }
 
     func registerPermissions() {
@@ -352,24 +350,26 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
         }
 
         if iOS8 {
-            if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
-                if notificationSettings.types == UIUserNotificationType() {
-                    errors.append("Error: notification permission missing")
+            DispatchQueue.main.async {
+                if let notificationSettings = UIApplication.shared.currentUserNotificationSettings {
+                    if notificationSettings.types == UIUserNotificationType() {
+                        errors.append("Error: notification permission missing")
+                    } else {
+                        if !notificationSettings.types.contains(.sound) {
+                            warnings.append("Warning: notification settings - sound permission missing")
+                        }
+
+                        if !notificationSettings.types.contains(.alert) {
+                            warnings.append("Warning: notification settings - alert permission missing")
+                        }
+
+                        if !notificationSettings.types.contains(.badge) {
+                            warnings.append("Warning: notification settings - badge permission missing")
+                        }
+                    }
                 } else {
-                    if !notificationSettings.types.contains(.sound) {
-                        warnings.append("Warning: notification settings - sound permission missing")
-                    }
-
-                    if !notificationSettings.types.contains(.alert) {
-                        warnings.append("Warning: notification settings - alert permission missing")
-                    }
-
-                    if !notificationSettings.types.contains(.badge) {
-                        warnings.append("Warning: notification settings - badge permission missing")
-                    }
+                    errors.append("Error: notification permission missing")
                 }
-            } else {
-                errors.append("Error: notification permission missing")
             }
         }
 
@@ -477,7 +477,8 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
             if let text = geo["notification"]["text"] as JSON? {
                 content.body = text.stringValue
             }
-            content.sound = UNNotificationSound.default()
+            // content.sound = UNNotificationSound.default()
+            content.sound = UNNotificationSound.default
             if let json = geo["notification"]["data"] as JSON? {
                 content.userInfo = ["geofence.notification.data": json.rawString(String.Encoding.utf8.rawValue, options: [])!]
             }

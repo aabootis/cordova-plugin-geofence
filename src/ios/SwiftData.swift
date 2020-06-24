@@ -22,8 +22,6 @@
 // THE SOFTWARE.
 
 import Foundation
-import UIKit
-
 
 // MARK: - SwiftData
 public struct SwiftData {
@@ -633,7 +631,8 @@ public struct SwiftData {
         }
         let imageID = UUID().uuidString
         let imageUrl = dirUrl.appendingPathComponent(imageID);
-        let imageAsData = UIImagePNGRepresentation(image)
+        // let imageAsData = UIImagePNGRepresentation(image)
+        let imageAsData = image.pngData()
         if let _ = imageAsData  {
             if !((try? imageAsData!.write(to: imageUrl, options: [.atomic])) != nil) {
                 print("Error saving image")
