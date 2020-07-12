@@ -286,7 +286,7 @@ class GeoNotificationManager : NSObject, CLLocationManagerDelegate, UNUserNotifi
 
     func startUpdatingLocation() {
         locationManager.startUpdatingLocation()
-        locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.allowsBackgroundLocationUpdates = false
         locationManager.pausesLocationUpdatesAutomatically = false
     }
 
